@@ -7,6 +7,8 @@ use App\Models\PengelolaLokasi;
 use App\Models\Reservasi;
 use App\Models\Surat;
 use App\Services\DocumentService;
+use App\Services\PemindaiSuratAiService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
@@ -16,6 +18,24 @@ class DokumenController extends Controller
 {
     public function __construct(protected DocumentService $documentService)
     {
+    }
+
+    /**
+     * POST /api/dokumen/ai-scan-surat
+     * Memindai foto kertas/surat dengan Gemini Vision AI dan menghasilkan PDF rapi via DomPDF.
+     */
+    public function aiScanSurat(Request $request, PemindaiSuratAiService $pemindai): JsonResponse
+    {
+        $request->validate([
+            'foto' => 'required|image|max:8192',
+        ]);
+
+        $hasil = $pemindai->pindaiDanBuatPdf(
+            $request->file('foto'),
+            $request->user()?->nama
+        );
+
+        return response()->json($hasil);
     }
 
     /**

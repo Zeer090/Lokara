@@ -57,6 +57,7 @@ Route::post('laporan-fasilitas',     [LaporanFasilitasController::class, 'simpan
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('surat/{id}/unduh', [DokumenController::class, 'unduhSurat']);
     Route::get('memo/{id}/unduh',  [DokumenController::class, 'unduhMemo']);
+    Route::post('dokumen/ai-scan-surat', [DokumenController::class, 'aiScanSurat']);
 });
 
 // ── 5. Notifikasi (Semua pengguna login) ─────────────────────────────────────

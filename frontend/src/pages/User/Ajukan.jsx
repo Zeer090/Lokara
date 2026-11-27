@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../api/klien.js';
@@ -64,6 +64,12 @@ const Ajukan = () => {
   const [peserta, setPeserta] = useState('');
   const [tujuan, setTujuan] = useState('');
   const [fileSurat, setFileSurat] = useState(null);
+  const [modeSurat, setModeSurat] = useState('pdf'); // 'pdf' | 'kamera'
+  const [scanResultAi, setScanResultAi] = useState(null);
+  const [scanningPdf, setScanningPdf] = useState(false);
+  const [kameraAktif, setKameraAktif] = useState(false);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [hasilSukses, setHasilSukses] = useState(null);
@@ -128,6 +134,100 @@ const Ajukan = () => {
   const lokasiTersedia = daftarLokasi.filter((l) => l.jenis === tipePeminjaman);
   const selectedLokasi = daftarLokasi.find((l) => l.id === lokasiId);
   const sesiObj = SESI_JADWAL[sesiAktif];
+
+  // Hentikan stream kamera saat unmount
+  const hentikanKamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setKameraAktif(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  const bukaKameraLive = async () => {
+    setErrorMsg('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setKameraAktif(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 80);
+    } catch {
+      setErrorMsg('Kamera tidak dapat diakses. Gunakan tombol "Ambil Foto / Galeri" di bawah untuk scan kertas.');
+    }
+  };
+
+  const prosesGambarKePdf = async (fileOrBlob) => {
+    setScanningPdf(true);
+    setErrorMsg('');
+    setScanResultAi(null);
+    try {
+      const formData = new FormData();
+      formData.append('foto', fileOrBlob, 'surat_kamera.jpg');
+
+      const res = await api.post('/dokumen/ai-scan-surat', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const { pdf_base64, filename, hasil_scan } = res.data;
+      const bin = atob(pdf_base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) {
+        bytes[i] = bin.charCodeAt(i);
+      }
+      const pdfFile = new File([bytes], filename || 'surat_scan_ai.pdf', { type: 'application/pdf' });
+
+      setFileSurat(pdfFile);
+      setScanResultAi(hasil_scan || null);
+      if (!tujuan.trim() && hasil_scan?.keperluan_ringkas) {
+        setTujuan(hasil_scan.keperluan_ringkas);
+      }
+      hentikanKamera();
+    } catch (err) {
+      setErrorMsg(err.response?.data?.galat || 'Gagal memindai surat dengan AI. Pastikan foto cukup jelas.');
+    } finally {
+      setScanningPdf(false);
+    }
+  };
+
+  const jepretKameraLive = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (blob) prosesGambarKePdf(blob);
+    }, 'image/jpeg', 0.92);
+  };
+
+  const unduhHasilScanPdf = () => {
+    if (!fileSurat) return;
+    const url = URL.createObjectURL(fileSurat);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileSurat.name || 'scan_surat_permohonan.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const handlePilihTipe = (tipe) => {
     setTipePeminjaman(tipe);
@@ -522,20 +622,140 @@ const Ajukan = () => {
             />
           </div>
 
-          {/* Lampiran Surat PDF (HANYA MUNCUL DI TAB GEDUNG) */}
+          {/* Lampiran Surat PDF / Scan Kamera -> PDF (HANYA MUNCUL DI TAB GEDUNG) */}
           {tipePeminjaman === 'gedung' ? (
-            <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-xl space-y-2">
-              <label className="block text-xs font-semibold text-purple-950">
-                Berkas Surat Permohonan Resmi (Format PDF, Maks. 5 MB) <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="file"
-                accept=".pdf"
-                onChange={(e) => setFileSurat(e.target.files[0] || null)}
-                className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200"
-                required
-              />
-              <p className="text-[11px] text-purple-700">Surat akan diperiksa oleh Bu Eci sebelum persetujuan diterbitkan.</p>
+            <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-2xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <label className="block text-xs font-bold text-purple-950">
+                  Surat Permohonan Resmi (Format PDF, Maks. 5 MB) <span className="text-rose-500">*</span>
+                </label>
+                <div className="inline-flex bg-purple-100/80 p-0.5 rounded-lg text-[11px] font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => { setModeSurat('pdf'); hentikanKamera(); }}
+                    className={`px-2.5 py-1 rounded-md transition ${
+                      modeSurat === 'pdf' ? 'bg-white text-purple-900 shadow-xs' : 'text-purple-700'
+                    }`}
+                  >
+                    📄 Unggah PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModeSurat('kamera')}
+                    className={`px-2.5 py-1 rounded-md transition ${
+                      modeSurat === 'kamera' ? 'bg-white text-purple-900 shadow-xs' : 'text-purple-700'
+                    }`}
+                  >
+                    🤖 AI Scan Surat → PDF Rapi
+                  </button>
+                </div>
+              </div>
+
+              {modeSurat === 'pdf' ? (
+                <div className="space-y-1.5">
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => {
+                      setFileSurat(e.target.files[0] || null);
+                      setScanResultAi(null);
+                    }}
+                    className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200"
+                  />
+                  <p className="text-[11px] text-purple-700">Surat akan diperiksa oleh Bu Eci sebelum persetujuan diterbitkan.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-[11px] text-purple-800 bg-purple-100/70 px-3 py-2 rounded-xl border border-purple-200">
+                    🤖 <strong>AI Document Scanner:</strong> Foto kertas surat Anda — Gemini AI akan membaca isinya, merapikan ejaan, lalu men-generate surat PDF resmi yang rapi secara otomatis.
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {!kameraAktif ? (
+                      <button
+                        type="button"
+                        disabled={scanningPdf}
+                        onClick={bukaKameraLive}
+                        className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-xs transition"
+                      >
+                        📷 Buka Kamera Langsung
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={hentikanKamera}
+                        className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-semibold transition"
+                      >
+                        ✕ Tutup Kamera
+                      </button>
+                    )}
+
+                    <label className={`px-3.5 py-2 bg-white hover:bg-purple-100 text-purple-800 border border-purple-300 rounded-xl text-xs font-semibold cursor-pointer transition ${scanningPdf ? 'opacity-50 pointer-events-none' : ''}`}>
+                      🖼️ Ambil Foto Kertas / Galeri
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        disabled={scanningPdf}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) prosesGambarKePdf(f);
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {scanningPdf && (
+                    <div className="p-3 bg-white border border-purple-200 rounded-xl text-xs text-purple-800 font-semibold flex items-center gap-2">
+                      <span className="animate-spin">⏳</span>
+                      <span>AI sedang membaca surat &amp; menyusun PDF resmi yang rapi...</span>
+                    </div>
+                  )}
+
+                  {kameraAktif && (
+                    <div className="space-y-2">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        className="w-full max-h-64 rounded-xl border border-purple-300 bg-black object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={jepretKameraLive}
+                        disabled={scanningPdf}
+                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow transition"
+                      >
+                        {scanningPdf ? 'AI Sedang Memindai...' : '📸 Jepret & Generate PDF Rapi'}
+                      </button>
+                    </div>
+                  )}
+
+                  {scanResultAi && fileSurat && (
+                    <div className="bg-white border border-emerald-200 rounded-xl p-3.5 space-y-2 text-xs">
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                        <span className="font-bold text-emerald-700">
+                          ✅ PDF Surat Resmi Siap ({(fileSurat.size / 1024).toFixed(1)} KB)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={unduhHasilScanPdf}
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-semibold transition"
+                        >
+                          ⬇️ Unduh PDF Rapi
+                        </button>
+                      </div>
+                      <div className="space-y-1 text-[11px] text-slate-700">
+                        <p><strong>Kop/Instansi:</strong> {scanResultAi.kop_instansi}</p>
+                        <p><strong>Nomor &amp; Tanggal:</strong> {scanResultAi.nomor_surat} • {scanResultAi.tanggal_surat}</p>
+                        <p><strong>Perihal:</strong> {scanResultAi.perihal}</p>
+                        <p><strong>Penandatangan:</strong> {scanResultAi.penandatangan} ({scanResultAi.jabatan})</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 text-[11px] text-slate-500 flex items-center gap-2">
