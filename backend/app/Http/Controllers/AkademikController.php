@@ -9,6 +9,7 @@ use App\Models\Department;
 use App\Models\StudyProgram;
 use App\Models\Lokasi;
 use App\Models\Pengguna;
+use App\Services\PemindaiJadwalAkademikService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -232,6 +233,106 @@ class AkademikController extends Controller
         return response()->json([
             'message'   => 'Schedule uploaded and activated',
             'upload_id' => $upload->id,
+        ], 201);
+    }
+
+    /**
+     * POST /api/akademik/scan
+     * Memindai file Excel (.xlsx) atau CSV jadwal kuliah dengan AI Agent / Sistem
+     * tanpa mengharuskan pengguna mengisi periode, prodi, atau UUID ruangan secara manual.
+     */
+    public function scan(Request $request, PemindaiJadwalAkademikService $pemindai): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,csv,txt|max:10240',
+        ]);
+
+        $hasil = $pemindai->pindaiBerkas($request->file('file'));
+        if (!empty($hasil['galat'])) {
+            return response()->json(['galat' => $hasil['galat']], 422);
+        }
+
+        return response()->json($hasil);
+    }
+
+    /**
+     * POST /api/akademik/aktivasi-scan
+     * Mengaktifkan hasil pemindaian jadwal kuliah dan langsung mengintegrasikannya ke jadwal ruangan.
+     */
+    public function aktivasiScan(Request $request): JsonResponse
+    {
+        $request->validate([
+            'items'                       => 'required|array|min:1',
+            'items.*.academic_period_id'  => 'required|uuid|exists:academic_periods,id',
+            'items.*.study_program_id'    => 'required|uuid|exists:study_programs,id',
+            'items.*.department_id'       => 'nullable|uuid|exists:departments,id',
+            'items.*.lokasi_id'           => 'required|uuid|exists:lokasi,id',
+            'items.*.nama_mata_kuliah'    => 'required|string|max:200',
+            'items.*.kode_mk'             => 'required|string|max:50',
+            'items.*.kelas'               => 'required|string|max:20',
+            'items.*.program_studi'       => 'required|string|max:120',
+            'items.*.nama_dosen'          => 'required|string|max:120',
+            'items.*.hari'                => 'required|in:senin,selasa,rabu,kamis,jumat,sabtu,minggu',
+            'items.*.jam_mulai'           => 'required|date_format:H:i',
+            'items.*.jam_selesai'         => 'required|date_format:H:i',
+        ]);
+
+        $items = $request->input('items');
+        $user  = $request->user();
+
+        $jumlahTersimpan = 0;
+
+        DB::transaction(function () use ($items, $user, &$jumlahTersimpan) {
+            // Kelompokkan berdasarkan kombinasi periode + prodi yang terdeteksi dari hasil scan
+            $grup = collect($items)->groupBy(fn ($it) => $it['academic_period_id'] . '|' . $it['study_program_id']);
+
+            foreach ($grup as $key => $barisProdi) {
+                [$periodId, $programId] = explode('|', $key);
+                $deptId = $barisProdi->first()['department_id']
+                    ?? StudyProgram::find($programId)?->department_id;
+
+                $upload = AcademicScheduleUpload::create([
+                    'academic_period_id'  => $periodId,
+                    'department_id'       => $deptId,
+                    'study_program_id'    => $programId,
+                    'uploaded_by_user_id' => $user->id,
+                    'file_path'           => 'ai_scan_' . now()->format('YmdHis'),
+                    'status'              => 'active',
+                ]);
+
+                // Nonaktifkan jadwal aktif sebelumnya untuk periode + prodi yang sama
+                AcademicSchedule::where('academic_period_id', $periodId)
+                    ->where('study_program_id', $programId)
+                    ->where('aktif', true)
+                    ->update(['aktif' => false]);
+
+                $insertRows = [];
+                foreach ($barisProdi as $row) {
+                    $insertRows[] = [
+                        'id'                 => (string) Str::uuid(),
+                        'academic_period_id' => $periodId,
+                        'study_program_id'   => $programId,
+                        'nama_mata_kuliah'   => $row['nama_mata_kuliah'],
+                        'kode_mk'            => $row['kode_mk'],
+                        'kelas'              => $row['kelas'],
+                        'program_studi'      => $row['program_studi'],
+                        'nama_dosen'         => $row['nama_dosen'],
+                        'hari'               => $row['hari'],
+                        'jam_mulai'          => $row['jam_mulai'],
+                        'jam_selesai'        => $row['jam_selesai'],
+                        'lokasi_id'          => $row['lokasi_id'],
+                        'aktif'              => true,
+                    ];
+                }
+
+                AcademicSchedule::insert($insertRows);
+                $jumlahTersimpan += count($insertRows);
+            }
+        });
+
+        return response()->json([
+            'message'         => 'Jadwal kuliah hasil pemindaian AI berhasil diaktifkan dan terintegrasi ke jadwal ruangan.',
+            'jumlah_tersimpan' => $jumlahTersimpan,
         ], 201);
     }
 

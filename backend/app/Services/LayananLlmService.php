@@ -121,7 +121,7 @@ class LayananLlmService
     protected function panggilGemini(string $systemPrompt, array $messages, float $temperature, int $maxTokens, bool $expectJson): ?string
     {
         $apiKey = config('services.llm.gemini_api_key');
-        $model  = config('services.llm.gemini_model', 'gemini-2.5-flash');
+        $primaryModel = config('services.llm.gemini_model', 'gemini-flash-latest');
 
         $contents = [];
         foreach ($messages as $m) {
@@ -147,17 +147,37 @@ class LayananLlmService
             $payload['generationConfig']['responseMimeType'] = 'application/json';
         }
 
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apiKey}";
+        $kandidatModel = array_values(array_unique([
+            $primaryModel,
+            'gemini-flash-latest',
+            'gemini-3.7-flash',
+            'gemini-flash-lite-latest',
+        ]));
 
-        $res = Http::timeout(12)->post($url, $payload);
+        foreach ($kandidatModel as $model) {
+            $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
 
-        if (!$res->successful()) {
-            Log::warning('Gemini API error', ['status' => $res->status(), 'body' => $res->body()]);
-            return null;
+            $res = Http::withHeaders([
+                'x-goog-api-key' => $apiKey,
+            ])->timeout(20)->post($url, $payload);
+
+            if ($res->successful()) {
+                $text = data_get($res->json(), 'candidates.0.content.parts.0.text');
+                if (is_string($text) && trim($text) !== '') {
+                    return trim($text);
+                }
+            }
+
+            // Jika error bukan karena model sibuk/tidak ditemukan (mis. 400/401/403), hentikan
+            if (!in_array($res->status(), [404, 429, 500, 503], true)) {
+                Log::warning('Gemini API error', ['model' => $model, 'status' => $res->status(), 'body' => $res->body()]);
+                return null;
+            }
+
+            Log::info("Gemini model {$model} mengembalikan HTTP {$res->status()}, mencoba model cadangan...");
         }
 
-        $text = data_get($res->json(), 'candidates.0.content.parts.0.text');
-        return is_string($text) ? trim($text) : null;
+        return null;
     }
 
     protected function panggilOpenAiCompatible(
@@ -193,7 +213,7 @@ class LayananLlmService
         }
 
         $res = Http::withToken($apiKey)
-            ->timeout(12)
+            ->timeout(25)
             ->post($endpoint, $payload);
 
         if (!$res->successful()) {

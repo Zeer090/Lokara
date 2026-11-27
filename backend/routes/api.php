@@ -153,6 +153,8 @@ Route::middleware(['auth:sanctum', 'peran:pengelola_gedung,pengelola_sistem'])
 // ── 11. Akademik ─────────────────────────────────────────────────────────────
 Route::prefix('akademik')->middleware(['auth:sanctum', 'peran:akademik'])->group(function () {
     Route::post('upload',                [AkademikController::class, 'upload']);
+    Route::post('scan',                  [AkademikController::class, 'scan']);
+    Route::post('aktivasi-scan',         [AkademikController::class, 'aktivasiScan']);
     Route::get('upload',                 [AkademikController::class, 'listUploads']);
     Route::get('periods',                [AkademikController::class, 'listPeriods']);
     Route::get('schedule/{periodId}',    [AkademikController::class, 'activeSchedule']);

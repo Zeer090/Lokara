@@ -80,6 +80,14 @@ class KasusController extends Controller
     }
 
     /**
+     * Alias untuk route POST /api/kasus/{id}/pesan
+     */
+    public function pesan(Request $request, string $id): JsonResponse
+    {
+        return $this->kirimPesan($request, $id);
+    }
+
+    /**
      * POST /api/kasus/{id}/pesan
      * Kirim pesan dalam negosiasi kasus.
      */
