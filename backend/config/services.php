@@ -35,4 +35,14 @@ return [
         ],
     ],
 
+    'llm' => [
+        'provider'           => env('LLM_PROVIDER', 'auto'), // auto | gemini | groq | openrouter
+        'gemini_api_key'     => env('GEMINI_API_KEY'),
+        'gemini_model'       => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+        'groq_api_key'       => env('GROQ_API_KEY'),
+        'groq_model'         => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+        'openrouter_api_key' => env('OPENROUTER_API_KEY'),
+        'openrouter_model'   => env('OPENROUTER_MODEL', 'meta-llama/llama-3.3-70b-instruct:free'),
+    ],
+
 ];

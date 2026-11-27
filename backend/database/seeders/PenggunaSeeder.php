@@ -7,10 +7,7 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
 /**
- * Data awal pengguna (docs/02_database_postgresql.md bagian 6).
- *
- * Password diambil dari env masing-masing akun. Nilai cadangan di bawah HANYA
- * untuk lingkungan pengembangan dan wajib diganti sebelum produksi.
+ * Data awal pengguna (4 Kategori Akses: pengelola_sistem, pengelola_gedung, pengguna).
  */
 class PenggunaSeeder extends Seeder
 {
@@ -18,25 +15,25 @@ class PenggunaSeeder extends Seeder
     {
         $daftar = [
             [
-                'email' => 'admin@kampus.ac.id',
+                'email' => 'sistem@kampus.ac.id',
+                'nama' => 'Admin Sistem',
+                'peran' => 'pengelola_sistem',
+                'organisasi' => 'Bagian TI & Administrasi Sistem',
+                'password' => 'Sistem2026!',
+            ],
+            [
+                'email' => 'pengelola_gedung@kampus.ac.id',
                 'nama' => 'Bu Eci',
-                'peran' => 'admin',
-                'organisasi' => null,
-                'password' => env('ADMIN_PASSWORD', 'Admin123!'),
+                'peran' => 'pengelola_gedung',
+                'organisasi' => 'Tata Usaha / Pengelola Fasilitas',
+                'password' => 'Pengelola2026!',
             ],
             [
                 'email' => 'pengguna@kampus.ac.id',
-                'nama' => 'Pengguna Contoh',
+                'nama' => 'Mahasiswa Contoh',
                 'peran' => 'pengguna',
                 'organisasi' => 'HMJ Informatika',
-                'password' => env('PENGGUNA_PASSWORD', 'Pengguna2026!'),
-            ],
-            [
-                'email' => 'pimpinan@kampus.ac.id',
-                'nama' => 'Pimpinan Contoh',
-                'peran' => 'pimpinan',
-                'organisasi' => null,
-                'password' => env('PIMPINAN_PASSWORD', 'Pimpinan2026!'),
+                'password' => 'Pengguna2026!',
             ],
         ];
 
@@ -48,7 +45,7 @@ class PenggunaSeeder extends Seeder
                     'password_hash' => Hash::make($akun['password']),
                     'peran' => $akun['peran'],
                     'organisasi' => $akun['organisasi'],
-                    'no_hp' => null,
+                    'no_hp' => '08123456789',
                     'aktif' => true,
                 ],
             );

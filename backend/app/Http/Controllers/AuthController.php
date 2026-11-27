@@ -81,6 +81,7 @@ class AuthController extends Controller
     public function keluar(Request $request): JsonResponse
     {
         $request->user()->currentAccessToken()->delete();
+        auth()->forgetGuards();
 
         return response()->json(['pesan' => 'Berhasil keluar.']);
     }
@@ -91,13 +92,14 @@ class AuthController extends Controller
     private function profilData(Pengguna $p): array
     {
         return [
-            'id'         => $p->id,
-            'nama'       => $p->nama,
-            'email'      => $p->email,
-            'peran'      => $p->peran,
-            'organisasi' => $p->organisasi,
-            'no_hp'      => $p->no_hp,
-            'aktif'      => $p->aktif,
+            'id'             => $p->id,
+            'nama'           => $p->nama,
+            'email'          => $p->email,
+            'peran'          => $p->peran,
+            'organisasi'     => $p->organisasi,
+            'no_hp'          => $p->no_hp,
+            'aktif'          => $p->aktif,
+            'perlu_pemetaan' => in_array($p->peran, ['admin', 'pimpinan'], true),
         ];
     }
 }

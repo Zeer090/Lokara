@@ -60,33 +60,52 @@ class AuthTest extends TestCase
     public function test_masuk_berhasil(): void
     {
         Pengguna::create([
-            'nama' => 'Admin', 'email' => 'admin@kampus.ac.id',
-            'password_hash' => Hash::make('Admin123!'), 'peran' => 'admin',
-            'aktif' => true,
+            'nama'          => 'Pengelola Gedung',
+            'email'         => 'pengelola@kampus.ac.id',
+            'password_hash' => Hash::make('Gedung123!'),
+            'peran'         => 'pengelola_gedung',
+            'aktif'         => true,
         ]);
 
         $response = $this->postJson('/api/auth/masuk', [
-            'email' => 'admin@kampus.ac.id', 'password' => 'Admin123!',
+            'email'    => 'pengelola@kampus.ac.id',
+            'password' => 'Gedung123!',
         ]);
 
         $response->assertOk()
             ->assertJsonStructure(['token', 'pengguna'])
-            ->assertJsonPath('pengguna.peran', 'admin');
+            ->assertJsonPath('pengguna.peran', 'pengelola_gedung')
+            ->assertJsonPath('pengguna.perlu_pemetaan', false);
     }
 
     public function test_masuk_password_salah(): void
     {
         Pengguna::create([
-            'nama' => 'Admin', 'email' => 'admin@kampus.ac.id',
-            'password_hash' => Hash::make('Admin123!'), 'peran' => 'admin',
+            'nama'          => 'Pengelola',
+            'email'         => 'pengelola2@kampus.ac.id',
+            'password_hash' => Hash::make('Gedung123!'),
+            'peran'         => 'pengelola_gedung',
         ]);
 
         $response = $this->postJson('/api/auth/masuk', [
-            'email' => 'admin@kampus.ac.id', 'password' => 'salah',
+            'email'    => 'pengelola2@kampus.ac.id',
+            'password' => 'salah',
         ]);
 
         $response->assertStatus(401)
             ->assertJsonPath('galat', 'Email atau password salah.');
+    }
+
+    public function test_pembuatan_peran_lama_ditolak_trigger_database(): void
+    {
+        $this->expectException(\Illuminate\Database\QueryException::class);
+
+        Pengguna::create([
+            'nama'          => 'Admin Lama',
+            'email'         => 'admin_baru@kampus.ac.id',
+            'password_hash' => Hash::make('Admin123!'),
+            'peran'         => 'admin',
+        ]);
     }
 
     public function test_masuk_akun_tidak_aktif(): void

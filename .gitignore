@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+frontend/dist/
+dist/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & cache
+*.log
+.vite/
+.phpunit.result.cache
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporary / scratch files
+backend/scratch/
+scratch/
+backend/temp_*.php
+backend/audit_*.php
+database_backup/*.backup

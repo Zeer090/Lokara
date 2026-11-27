@@ -21,6 +21,14 @@ class Peran
             return response()->json(['galat' => 'Anda belum masuk.'], 401);
         }
 
+        if (! $pengguna->aktif) {
+            return response()->json(['galat' => 'Akun Anda dinonaktifkan. Silakan hubungi pengelola sistem.'], 403);
+        }
+
+        if (in_array($pengguna->peran, ['admin', 'pimpinan'], true)) {
+            return response()->json(['galat' => 'Akun ini belum dipetakan ke role baru. Hubungi pemilik proyek.'], 403);
+        }
+
         if (! in_array($pengguna->peran, $peranDiizinkan, true)) {
             return response()->json(['galat' => 'Anda tidak memiliki akses untuk tindakan ini.'], 403);
         }

@@ -1,0 +1,181 @@
+{
+  "info": {
+    "name": "SMARTSPACE – AKADEMIK API",
+    "_postman_id": "e6f4a5b2-1c3d-4e7f-9a2b-5c6d7e8f9a0b",
+    "description": "Postman collection for the five current AKADEMIK endpoints. Uses Bearer token variable {{akademikToken}}. No master‑data IDs are filled because the departments and study_programs tables are absent in the current DB.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000", "type": "string" },
+    { "key": "akademikToken", "value": "", "type": "string" },
+    { "key": "nonAkademikToken", "value": "", "type": "string" },
+    { "key": "periodId", "value": "", "type": "string" },
+    { "key": "departmentId", "value": "", "type": "string" },
+    { "key": "studyProgramId", "value": "", "type": "string" },
+    { "key": "lokasiId", "value": "", "type": "string" },
+    { "key": "uploadId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login (akademik)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/masuk", "host": ["{{baseUrl}}"], "path": ["api","auth","masuk"] },
+            "body": { "mode": "raw", "raw": "{ \"email\": \"akademik@example.com\", \"password\": \"<password>\" }" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+            "var json = pm.response.json();",
+            "pm.collectionVariables.set('akademikToken', json.token);"
+          ], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Academic periods",
+      "item": [
+        {
+          "name": "List periods",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{akademikToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/akademik/periods", "host": ["{{baseUrl}}"], "path": ["api","akademik","periods"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "var data = pm.response.json();",
+            "if (Array.isArray(data) && data.length) { pm.collectionVariables.set('periodId', data[0].id); }"
+          ], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Upload history",
+      "item": [
+        {
+          "name": "List uploads",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{akademikToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/akademik/upload", "host": ["{{baseUrl}}"], "path": ["api","akademik","upload"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "var data = pm.response.json();",
+            "if (Array.isArray(data) && data.length) { pm.collectionVariables.set('uploadId', data[0].id); }"
+          ], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Active schedules",
+      "item": [
+        {
+          "name": "Get active schedule for period",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{akademikToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/akademik/schedule/{{periodId}}", "host": ["{{baseUrl}}"], "path": ["api","akademik","schedule","{{periodId}}"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "var rows = pm.response.json();",
+            "rows.forEach(r => pm.expect(r.aktif).to.be.true);"
+          ], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Schedule upload",
+      "item": [
+        {
+          "name": "Upload schedule (valid CSV)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{akademikToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/akademik/upload", "host": ["{{baseUrl}}"], "path": ["api","akademik","upload"] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "academic_period_id", "value": "{{periodId}}", "type": "text" },
+                { "key": "department_id", "value": "{{departmentId}}", "type": "text" },
+                { "key": "study_program_id", "value": "{{studyProgramId}}", "type": "text" },
+                { "key": "file", "type": "file", "src": "schedule_example.csv" }
+              ]
+            }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "var json = pm.response.json();",
+            "pm.expect(json).to.have.property('upload_id');",
+            "pm.collectionVariables.set('uploadId', json.upload_id);"
+          ], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Upload errors",
+      "item": [
+        {
+          "name": "Get validation errors for a failed upload",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{akademikToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/akademik/upload/{{uploadId}}/errors", "host": ["{{baseUrl}}"], "path": ["api","akademik","upload","{{uploadId}}","errors"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "var json = pm.response.json();",
+            "pm.expect(json).to.have.property('status');",
+            "pm.expect(json).to.have.property('errors');"
+          ], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Authorization checks",
+      "item": [
+        {
+          "name": "Unauthenticated request (401)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Accept", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/akademik/periods", "host": ["{{baseUrl}}"], "path": ["api","akademik","periods"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Forbidden with non‑akademik token (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{nonAkademikToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/akademik/periods", "host": ["{{baseUrl}}"], "path": ["api","akademik","periods"] }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('403 Forbidden', () => pm.response.to.have.status(403));"], "type": "text/javascript" } }]
+        }
+      ]
+    }
+  ]
+}
+
