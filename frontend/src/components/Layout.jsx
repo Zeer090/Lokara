@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthProvider.jsx';
 import api from '../api/klien.js';
 import { parseTeksRingkas } from '../utils/format.js';
@@ -8,6 +8,7 @@ import { parseTeksRingkas } from '../utils/format.js';
 const Layout = ({ children }) => {
   const { user, logout, setRole } = useAuth();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [showAssistant, setShowAssistant] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     { sender: 'bot', text: 'Halo! Saya Asisten Informasi SMARTSPACE. Ada yang bisa saya bantu terkait jadwal, kapasitas, atau aturan peminjaman gedung?' }
@@ -21,6 +22,17 @@ const Layout = ({ children }) => {
       sessionStorage.setItem('asisten_info_sesi', s);
     }
     return s;
+  });
+
+  // 0. Daftar lokasi aktif untuk kartu konfirmasi laporan fasilitas
+  const { data: daftarLokasiChat = [] } = useQuery({
+    queryKey: ['chat_daftar_lokasi'],
+    queryFn: async () => {
+      const res = await api.get('/lokasi');
+      const data = res.data?.data || res.data || [];
+      return Array.isArray(data) ? data : [];
+    },
+    staleTime: 60000,
   });
 
   // 1. Polling notifikasi unread tiap 30 detik
@@ -71,7 +83,15 @@ const Layout = ({ children }) => {
     try {
       const res = await api.post('/asisten-info/pesan', { pesan: msg, sesi: sessionId });
       const reply = res.data?.jawaban || res.data?.pesan || 'Terima kasih, pesan Anda telah diterima.';
-      setChatMessages((prev) => [...prev, { sender: 'bot', text: reply }]);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          sender: 'bot',
+          text: reply,
+          usulanLaporan: res.data?.usulan_laporan || null,
+          laporanStatus: null,
+        },
+      ]);
     } catch {
       setChatMessages((prev) => [
         ...prev,
@@ -80,6 +100,42 @@ const Layout = ({ children }) => {
     } finally {
       setIsBotTyping(false);
     }
+  };
+
+  const handleKonfirmasiLaporan = async (msgIdx, payload) => {
+    setChatMessages((prev) =>
+      prev.map((m, i) => (i === msgIdx ? { ...m, laporanStatus: 'sending' } : m))
+    );
+    try {
+      const formData = new FormData();
+      if (payload.lokasi_id) formData.append('lokasi_id', payload.lokasi_id);
+      formData.append('ringkasan', payload.ringkasan);
+      formData.append('isi', payload.isi);
+      formData.append('konfirmasi', '1');
+      formData.append('anonim', payload.anonim ? '1' : '0');
+      if (payload.foto) formData.append('foto', payload.foto);
+
+      await api.post('/laporan-fasilitas', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      qc.invalidateQueries({ queryKey: ['publik_beranda_lokasi'] });
+      qc.invalidateQueries({ queryKey: ['manajemen_laporan_fasilitas'] });
+
+      setChatMessages((prev) =>
+        prev.map((m, i) => (i === msgIdx ? { ...m, laporanStatus: 'sent' } : m))
+      );
+    } catch {
+      setChatMessages((prev) =>
+        prev.map((m, i) => (i === msgIdx ? { ...m, laporanStatus: 'error' } : m))
+      );
+    }
+  };
+
+  const handleBatalLaporan = (msgIdx) => {
+    setChatMessages((prev) =>
+      prev.map((m, i) => (i === msgIdx ? { ...m, laporanStatus: 'cancelled' } : m))
+    );
   };
 
   const handleSendChat = async (e) => {
@@ -179,7 +235,6 @@ const Layout = ({ children }) => {
                 <>
                   <NavLink to="/" end className={navClass}>Beranda</NavLink>
                   <NavLink to="/jadwal" className={navClass}>Jadwal Publik</NavLink>
-                  <NavLink to="/lokasi" className={navClass}>Lokasi & Fasilitas</NavLink>
                 </>
               )}
 
@@ -223,6 +278,7 @@ const Layout = ({ children }) => {
                   </NavLink>
                   <NavLink to="/pengelola/atur-jadwal" className={navClass}>Atur Jadwal</NavLink>
                   <NavLink to="/pengelola/kasus" className={navClass}>Kasus Negosiasi</NavLink>
+                  <NavLink to="/pengelola/laporan-fasilitas" className={navClass}>Laporan Kerusakan</NavLink>
                   <NavLink to="/pengelola/laporan" className={navClass}>Laporan</NavLink>
                 </>
               )}
@@ -237,6 +293,7 @@ const Layout = ({ children }) => {
                   <NavLink to="/sistem/gedung-tanpa-pengelola" className={navClass}>Gedung Terbengkalai</NavLink>
                   <NavLink to="/sistem/pengaturan" className={navClass}>Pengaturan</NavLink>
                   <NavLink to="/sistem/log" className={navClass}>Log</NavLink>
+                  <NavLink to="/sistem/laporan-fasilitas" className={navClass}>Kerusakan</NavLink>
                   <NavLink to="/sistem/laporan" className={navClass}>Laporan</NavLink>
                 </>
               )}
@@ -309,7 +366,6 @@ const Layout = ({ children }) => {
             <>
               <NavLink to="/" end className={navClass}>Beranda</NavLink>
               <NavLink to="/jadwal" className={navClass}>Jadwal</NavLink>
-              <NavLink to="/lokasi" className={navClass}>Lokasi</NavLink>
             </>
           )}
           {user?.role === 'pengguna' && (
@@ -390,7 +446,7 @@ const Layout = ({ children }) => {
               {chatMessages.map((m, idx) => (
                 <div
                   key={idx}
-                  className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
                 >
                   <div
                     className={`max-w-[88%] rounded-xl px-2.5 py-1.5 leading-snug whitespace-pre-line ${
@@ -405,6 +461,16 @@ const Layout = ({ children }) => {
                       return <React.Fragment key={i}>{tok.value}</React.Fragment>;
                     })}
                   </div>
+
+                  {m.sender === 'bot' && m.usulanLaporan && (
+                    <KartuKonfirmasiLaporan
+                      usulan={m.usulanLaporan}
+                      status={m.laporanStatus}
+                      daftarLokasi={daftarLokasiChat}
+                      onKonfirmasi={(payload) => handleKonfirmasiLaporan(idx, payload)}
+                      onBatal={() => handleBatalLaporan(idx)}
+                    />
+                  )}
                 </div>
               ))}
               {isBotTyping && (
@@ -483,5 +549,138 @@ const Layout = ({ children }) => {
     </div>
   );
 };
+
+function KartuKonfirmasiLaporan({ usulan, status, daftarLokasi, onKonfirmasi, onBatal }) {
+  const [lokasiId, setLokasiId] = useState(usulan.lokasi_id || '');
+  const [ringkasan, setRingkasan] = useState(
+    `[${(usulan.kategori || 'fasilitas').replace(/_/g, ' ').toUpperCase()}] ${String(usulan.deskripsi_kerusakan || '').slice(0, 80)}`
+  );
+  const [isi, setIsi] = useState(usulan.deskripsi_kerusakan || '');
+  const [anonim, setAnonim] = useState(false);
+  const [foto, setFoto] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+
+  const handleFotoChange = (e) => {
+    const f = e.target.files?.[0] || null;
+    setFoto(f);
+    if (f) {
+      setPreviewUrl(URL.createObjectURL(f));
+    } else {
+      setPreviewUrl('');
+    }
+  };
+
+  if (status === 'cancelled') {
+    return (
+      <div className="mt-1.5 bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-500">
+        Pengiriman laporan dibatalkan.
+      </div>
+    );
+  }
+
+  if (status === 'sent') {
+    return (
+      <div className="mt-1.5 w-[92%] bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-[11px] text-emerald-800 space-y-0.5">
+        <p className="font-bold">✅ Laporan Terkirim &amp; Terintegrasi AI</p>
+        <p className="text-emerald-700">Deskripsi fasilitas ruangan/gedung telah diperbarui dan diteruskan ke pengelola.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 w-[92%] bg-amber-50/90 border border-amber-200 rounded-xl p-2.5 text-[11px] space-y-2 shadow-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-bold text-amber-900">🛠️ Konfirmasi Laporan Fasilitas</span>
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Lokasi:</label>
+        <select
+          value={lokasiId}
+          onChange={(e) => setLokasiId(e.target.value)}
+          className="w-full bg-white border border-amber-200 rounded-lg px-2 py-1 text-[11px] text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+        >
+          <option value="">-- Umum / Belum spesifik --</option>
+          {daftarLokasi.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.nama} ({l.jenis})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Ringkasan:</label>
+        <input
+          type="text"
+          value={ringkasan}
+          onChange={(e) => setRingkasan(e.target.value.slice(0, 200))}
+          className="w-full bg-white border border-amber-200 rounded-lg px-2 py-1 text-[11px] text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Detail Keluhan:</label>
+        <textarea
+          rows={2}
+          value={isi}
+          onChange={(e) => setIsi(e.target.value.slice(0, 2000))}
+          className="w-full bg-white border border-amber-200 rounded-lg px-2 py-1 text-[11px] text-slate-800 resize-none focus:outline-none focus:ring-1 focus:ring-amber-500"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Foto / Kamera (opsional):</label>
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFotoChange}
+          className="w-full text-[10px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200"
+        />
+        {previewUrl && (
+          <img
+            src={previewUrl}
+            alt="Preview foto kerusakan"
+            className="mt-1.5 h-20 w-full object-cover rounded-lg border border-amber-200"
+          />
+        )}
+      </div>
+
+      <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={anonim}
+          onChange={(e) => setAnonim(e.target.checked)}
+          className="rounded border-slate-300"
+        />
+        <span>Kirim sebagai anonim</span>
+      </label>
+
+      {status === 'error' && (
+        <p className="text-[10px] text-rose-600 font-semibold">Gagal mengirim laporan. Periksa kembali isian Anda.</p>
+      )}
+
+      <div className="flex items-center gap-1.5 pt-0.5">
+        <button
+          type="button"
+          disabled={status === 'sending' || !ringkasan.trim() || !isi.trim()}
+          onClick={() => onKonfirmasi({ lokasi_id: lokasiId || null, ringkasan, isi, anonim, foto })}
+          className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold py-1.5 px-2 rounded-lg text-[11px] transition"
+        >
+          {status === 'sending' ? 'Memproses AI...' : '✅ Konfirmasi Kirim'}
+        </button>
+        <button
+          type="button"
+          disabled={status === 'sending'}
+          onClick={onBatal}
+          className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-[11px] font-medium transition"
+        >
+          Batal
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default Layout;

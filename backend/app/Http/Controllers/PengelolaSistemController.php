@@ -10,6 +10,7 @@ use App\Models\Pengaturan;
 use App\Models\PengelolaLokasi;
 use App\Models\Pengguna;
 use App\Models\Reservasi;
+use App\Services\IntegrasiFasilitasAiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -451,9 +452,13 @@ class PengelolaSistemController extends Controller
             'catatan_penanganan' => $request->input('catatan_penanganan', $laporan->catatan_penanganan),
         ]);
 
+        if (in_array($request->input('status'), ['selesai', 'ditolak'], true)) {
+            app(IntegrasiFasilitasAiService::class)->pulihkanFasilitasSetelahSelesai($laporan);
+        }
+
         return response()->json([
             'pesan'   => 'Status laporan fasilitas berhasil diperbarui.',
-            'laporan' => $laporan->fresh(['lokasi:id,nama,jenis']),
+            'laporan' => $laporan->fresh(['lokasi:id,nama,jenis,fasilitas']),
         ]);
     }
 

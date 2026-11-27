@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../api/klien.js';
@@ -8,77 +8,59 @@ const fetchLokasiList = async () => {
   return res.data?.data || res.data || [];
 };
 
-// Helper Format AM & PM
-const formatAmPm = (timeStr) => {
-  if (!timeStr) return null;
-  const [hStr, mStr] = timeStr.split(':');
-  const h = parseInt(hStr, 10);
-  if (isNaN(h)) return null;
-  const isPm = h >= 12;
-  const period = isPm ? 'PM' : 'AM';
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  const padH12 = String(h12).padStart(2, '0');
-
-  let keterangan = '';
-  let ikon = '☀️';
-  let badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
-
-  if (h >= 0 && h < 5) {
-    keterangan = 'Dini Hari';
-    ikon = '🌌';
-    badgeColor = 'bg-slate-100 text-slate-700 border-slate-300';
-  } else if (h >= 5 && h < 12) {
-    keterangan = 'Pagi';
-    ikon = '☀️';
-    badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
-  } else if (h >= 12 && h < 15) {
-    keterangan = 'Siang';
-    ikon = '🌤️';
-    badgeColor = 'bg-blue-50 text-blue-800 border-blue-200';
-  } else if (h >= 15 && h < 18) {
-    keterangan = 'Sore';
-    ikon = '🌇';
-    badgeColor = 'bg-orange-50 text-orange-800 border-orange-200';
-  } else {
-    keterangan = 'Malam';
-    ikon = '🌙';
-    badgeColor = 'bg-indigo-50 text-indigo-800 border-indigo-200';
-  }
-
-  return {
-    time12: `${padH12}:${mStr || '00'} ${period}`,
-    period,
-    keterangan,
-    ikon,
-    badgeColor,
-    h24: h,
-    m: mStr || '00',
-  };
+const SESI_JADWAL = {
+  sesi1: {
+    id: 'sesi1',
+    ikon: '☀️',
+    nama: 'Sesi 1 (Pagi – Sore)',
+    rentang: '08:00 – 15:00 WIB',
+    minMulai: '08:00',
+    maxSelesai: '15:00',
+    opsiMulai: ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00'],
+    opsiSelesai: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'],
+  },
+  sesi2: {
+    id: 'sesi2',
+    ikon: '🌙',
+    nama: 'Sesi 2 (Sore – Malam)',
+    rentang: '15:00 – 20:00 WIB',
+    minMulai: '15:00',
+    maxSelesai: '20:00',
+    opsiMulai: ['15:00', '16:00', '17:00', '18:00', '19:00'],
+    opsiSelesai: ['16:00', '17:00', '18:00', '19:00', '20:00'],
+  },
 };
 
-const toggleAmPm = (timeStr) => {
-  if (!timeStr) return '';
-  const [hStr, mStr] = timeStr.split(':');
-  let h = parseInt(hStr, 10);
-  if (isNaN(h)) return timeStr;
-  if (h < 12) {
-    h = h + 12; // AM -> PM (misal 08:00 -> 20:00)
-  } else {
-    h = h - 12; // PM -> AM (misal 20:00 -> 08:00)
+const getTodayStr = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const getHariShort = (dateStr) => {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('id-ID', { weekday: 'short' });
+  } catch {
+    return '';
   }
-  return `${String(h).padStart(2, '0')}:${mStr || '00'}`;
 };
 
 const Ajukan = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialJenis = searchParams.get('jenis') === 'ruangan' ? 'ruangan' : 'gedung';
-  
-  // State pemisahan: 'gedung' atau 'ruangan'
+  const initialLokasiId = searchParams.get('lokasi_id') || '';
+
+  const todayStr = useMemo(() => getTodayStr(), []);
+
   const [tipePeminjaman, setTipePeminjaman] = useState(initialJenis);
-  const [lokasiId, setLokasiId] = useState('');
-  const [tanggal, setTanggal] = useState('');
-  const [jamMulai, setJamMulai] = useState('');
-  const [jamSelesai, setJamSelesai] = useState('');
+  const [lokasiId, setLokasiId] = useState(initialLokasiId);
+  const [tanggal, setTanggal] = useState(todayStr);
+  const [sesiAktif, setSesiAktif] = useState('sesi1');
+  const [jamMulai, setJamMulai] = useState('08:00');
+  const [jamSelesai, setJamSelesai] = useState('15:00');
   const [peserta, setPeserta] = useState('');
   const [tujuan, setTujuan] = useState('');
   const [fileSurat, setFileSurat] = useState(null);
@@ -91,20 +73,87 @@ const Ajukan = () => {
     queryFn: fetchLokasiList,
   });
 
-  // Filter lokasi terpisah secara tegas
+  // Sinkronkan tipe & lokasi jika user datang dari klik tombol di Beranda
+  useEffect(() => {
+    if (initialLokasiId && daftarLokasi.length > 0) {
+      const found = daftarLokasi.find((l) => l.id === initialLokasiId);
+      if (found) {
+        setTipePeminjaman(found.jenis);
+        setLokasiId(found.id);
+      }
+    }
+  }, [initialLokasiId, daftarLokasi]);
+
+  // Ambil jadwal terisi bulan terpilih untuk lokasi yang dipilih (sama dengan Kalender)
+  const currentMonth = tanggal ? tanggal.slice(0, 7) : todayStr.slice(0, 7);
+  const { data: eventsLokasi = [], isLoading: loadingJadwal } = useQuery({
+    queryKey: ['ajukan_kalender_lokasi', currentMonth, lokasiId],
+    queryFn: async () => {
+      if (!lokasiId) return [];
+      const res = await api.get('/jadwal/kalender', {
+        params: { bulan: currentMonth, lokasi_id: lokasiId },
+      });
+      return res.data?.events || [];
+    },
+    enabled: Boolean(lokasiId),
+  });
+
+  const jadwalHariIni = useMemo(() => {
+    if (!tanggal || !eventsLokasi.length) return [];
+    return eventsLokasi.filter((ev) => {
+      if (!ev.start || !ev.end) return false;
+      const s = ev.start.slice(0, 10);
+      const e = ev.end.slice(0, 10);
+      return s <= tanggal && e >= tanggal;
+    });
+  }, [eventsLokasi, tanggal]);
+
+  // 7-hari date strip (mulai dari hari ini atau sekitar tanggal dipilih)
+  const dateStrip = useMemo(() => {
+    const baseStr = tanggal >= todayStr ? tanggal : todayStr;
+    const [y, m, d] = baseStr.split('-').map(Number);
+    const base = new Date(y, m - 1, d);
+    const list = [];
+    for (let offset = 0; offset < 7; offset++) {
+      const next = new Date(base);
+      next.setDate(base.getDate() + offset);
+      const dy = next.getFullYear();
+      const dm = String(next.getMonth() + 1).padStart(2, '0');
+      const dd = String(next.getDate()).padStart(2, '0');
+      list.push(`${dy}-${dm}-${dd}`);
+    }
+    return list;
+  }, [tanggal, todayStr]);
+
   const lokasiTersedia = daftarLokasi.filter((l) => l.jenis === tipePeminjaman);
   const selectedLokasi = daftarLokasi.find((l) => l.id === lokasiId);
+  const sesiObj = SESI_JADWAL[sesiAktif];
 
-  // Keterangan waktu AM / PM
-  const infoMulai = formatAmPm(jamMulai);
-  const infoSelesai = formatAmPm(jamSelesai);
-
-  // Saat berpindah tab tipe, reset pilihan lokasi
   const handlePilihTipe = (tipe) => {
     setTipePeminjaman(tipe);
     setLokasiId('');
     setErrorMsg('');
+    if (tipe === 'gedung') {
+      const s = SESI_JADWAL[sesiAktif];
+      setJamMulai(s.minMulai);
+      setJamSelesai(s.maxSelesai);
+    }
     setSearchParams({ jenis: tipe });
+  };
+
+  const handlePilihSesi = (sesiKey) => {
+    const s = SESI_JADWAL[sesiKey];
+    setSesiAktif(sesiKey);
+    setJamMulai(s.minMulai);
+    setJamSelesai(s.maxSelesai);
+  };
+
+  const handleUbahJamMulai = (val) => {
+    setJamMulai(val);
+    if (jamSelesai <= val) {
+      const nextValid = sesiObj.opsiSelesai.find((o) => o > val) || sesiObj.maxSelesai;
+      setJamSelesai(nextValid);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -113,6 +162,16 @@ const Ajukan = () => {
 
     if (!lokasiId || !tanggal || !jamMulai || !jamSelesai || !tujuan) {
       setErrorMsg('Mohon lengkapi semua kolom yang wajib diisi.');
+      return;
+    }
+
+    if (tipePeminjaman === 'gedung') {
+      if (jamMulai < sesiObj.minMulai || jamSelesai > sesiObj.maxSelesai || jamSelesai <= jamMulai) {
+        setErrorMsg(`Waktu peminjaman gedung untuk ${sesiObj.nama} harus berada di antara ${sesiObj.minMulai} – ${sesiObj.maxSelesai} WIB.`);
+        return;
+      }
+    } else if (jamSelesai <= jamMulai) {
+      setErrorMsg('Jam selesai harus lebih akhir daripada jam mulai.');
       return;
     }
 
@@ -194,11 +253,11 @@ const Ajukan = () => {
       <div>
         <h1 className="text-3xl font-bold text-slate-900 mb-1">Pengajuan Peminjaman</h1>
         <p className="text-sm text-slate-500">
-          Pilih kategori peminjaman di bawah ini sesuai kebutuhan acara Anda.
+          Pilih kategori, tanggal dari kalender, dan sesi waktu kegiatan Anda.
         </p>
       </div>
 
-      {/* 🔘 PEMISAH FORM: TAB PEMILIHAN KATEGORI */}
+      {/* Tab Kategori */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-1.5 bg-slate-200/70 rounded-2xl">
         <button
           type="button"
@@ -216,7 +275,7 @@ const Ajukan = () => {
           </div>
           <div>
             <h3 className="font-bold text-sm">Peminjaman Gedung</h3>
-            <p className="text-[11px] text-slate-500">Kapasitas besar, wajib surat PDF, disetujui Bu Eci</p>
+            <p className="text-[11px] text-slate-500">Kapasitas besar, wajib surat PDF, ACC Bu Eci</p>
           </div>
         </button>
 
@@ -236,7 +295,7 @@ const Ajukan = () => {
           </div>
           <div>
             <h3 className="font-bold text-sm">Peminjaman Ruangan</h3>
-            <p className="text-[11px] text-slate-500">Kelas / Lab / Seminar, tanpa surat, instan disetujui</p>
+            <p className="text-[11px] text-slate-500">Kelas / Lab / Seminar, tanpa surat, instan ACC</p>
           </div>
         </button>
       </div>
@@ -249,40 +308,16 @@ const Ajukan = () => {
           </div>
           {errorMsg.toLowerCase().includes('akademik') && (
             <p className="text-[11px] text-rose-700 pl-6">
-              💡 Ruangan ini telah dialokasikan untuk jadwal perkuliahan semester aktif oleh Bagian Akademik (BAAK). Silakan periksa jam yang kosong di menu Kalender atau pilih ruangan lain.
+              💡 Ruangan ini terpakai jadwal kuliah aktif. Silakan cek slot yang kosong di kalender atau pilih ruangan lain.
             </p>
           )}
         </div>
       )}
 
-      {/* FORM SPESIFIK SESUAI KATEGORI YANG DIPILIH */}
+      {/* Form Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 sm:p-8 space-y-6">
-        <div className={`p-4 rounded-xl border text-xs leading-relaxed ${
-          tipePeminjaman === 'gedung'
-            ? 'bg-purple-50/70 border-purple-200 text-purple-900'
-            : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
-        }`}>
-          {tipePeminjaman === 'gedung' ? (
-            <div className="flex items-start gap-2.5">
-              <span className="text-base">🏛️</span>
-              <div>
-                <p className="font-bold mb-0.5">Alur Peminjaman Gedung (Manual):</p>
-                <p>Pengajuan permohonan gedung akan langsung masuk ke meja Pengelola Gedung (Bu Eci) untuk diperiksa kelayakan surat dan jadwalnya.</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-2.5">
-              <span className="text-base">⚡</span>
-              <div>
-                <p className="font-bold mb-0.5">Alur Peminjaman Ruangan (Otomatis):</p>
-                <p>Tidak memerlukan surat permohonan. Begitu Anda mengirim form dan jam yang dipilih kosong, sistem langsung menerbitkan status <strong>Disetujui</strong>.</p>
-              </div>
-            </div>
-          )}
-        </div>
-
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Dropdown Lokasi yang sudah difilter */}
+          {/* 1. Pilih Lokasi */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
               Pilih {tipePeminjaman === 'gedung' ? 'Gedung' : 'Ruangan'} <span className="text-rose-500">*</span>
@@ -306,132 +341,156 @@ const Ajukan = () => {
             </select>
           </div>
 
-          {/* Tanggal */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Tanggal Kegiatan <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="date"
-              value={tanggal}
-              onChange={(e) => setTanggal(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          {/* Jam Mulai & Selesai dengan Keterangan AM & PM Jelas */}
-          <div className="space-y-3 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/70">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <span>⏰</span> Waktu Kegiatan (Keterangan AM & PM)
-              </span>
-              <span className="text-[11px] text-slate-500 font-medium">
-                AM = 00:00–11:59 (Pagi) • PM = 12:00–23:59 (Siang/Malam)
-              </span>
+          {/* 2. Tanggal Kegiatan (Style Kalender + Date Strip) */}
+          <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>📅</span> Tanggal Kegiatan <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={tanggal}
+                onChange={(e) => setTanggal(e.target.value)}
+                min={todayStr}
+                className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Jam Mulai */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Jam Mulai <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="time"
-                  value={jamMulai}
-                  onChange={(e) => setJamMulai(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-                {infoMulai ? (
-                  <div className="mt-2 flex items-center justify-between gap-1 text-[11px]">
-                    <span className={`px-2.5 py-1 rounded-lg border font-semibold flex items-center gap-1 ${infoMulai.badgeColor}`}>
-                      <span>{infoMulai.ikon}</span>
-                      <span><strong>{infoMulai.time12}</strong> ({infoMulai.keterangan})</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setJamMulai(toggleAmPm(jamMulai))}
-                      className="px-2 py-1 text-[10px] font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-blue-200 transition"
-                      title="Klik untuk mengubah antara AM (Pagi) dan PM (Malam)"
-                    >
-                      Ubah ke {infoMulai.period === 'AM' ? 'PM (Malam)' : 'AM (Pagi)'}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-slate-400 mt-1">Pilih jam mulai</p>
-                )}
-              </div>
-
-              {/* Jam Selesai */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Jam Selesai <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="time"
-                  value={jamSelesai}
-                  onChange={(e) => setJamSelesai(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-                {infoSelesai ? (
-                  <div className="mt-2 flex items-center justify-between gap-1 text-[11px]">
-                    <span className={`px-2.5 py-1 rounded-lg border font-semibold flex items-center gap-1 ${infoSelesai.badgeColor}`}>
-                      <span>{infoSelesai.ikon}</span>
-                      <span><strong>{infoSelesai.time12}</strong> ({infoSelesai.keterangan})</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setJamSelesai(toggleAmPm(jamSelesai))}
-                      className="px-2 py-1 text-[10px] font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-blue-200 transition"
-                      title="Klik untuk mengubah antara AM (Pagi) dan PM (Malam)"
-                    >
-                      Ubah ke {infoSelesai.period === 'AM' ? 'PM (Malam)' : 'AM (Pagi)'}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-slate-400 mt-1">Pilih jam selesai</p>
-                )}
-              </div>
-            </div>
-
-            {/* Quick Preset Buttons */}
-            <div className="pt-2 border-t border-slate-200/60">
-              <span className="text-[11px] text-slate-500 block mb-1.5 font-medium">
-                Pilihan Jam Cepat (Format 12-Jam Resmi):
-              </span>
-              <div className="flex flex-wrap gap-1.5 text-xs">
-                {[
-                  { label: '08:00 AM (Pagi)', mulai: '08:00', selesai: '12:00' },
-                  { label: '09:00 AM (Pagi)', mulai: '09:00', selesai: '15:00' },
-                  { label: '01:00 PM (Siang)', mulai: '13:00', selesai: '17:00' },
-                  { label: '07:00 PM (Malam)', mulai: '19:00', selesai: '21:30' },
-                ].map((p, idx) => (
+            {/* 7-Day Date Strip */}
+            <div className="grid grid-cols-7 gap-1.5">
+              {dateStrip.map((dStr) => {
+                const aktif = dStr === tanggal;
+                return (
                   <button
-                    key={idx}
+                    key={dStr}
                     type="button"
-                    onClick={() => { setJamMulai(p.mulai); setJamSelesai(p.selesai); }}
-                    className="px-2.5 py-1 bg-white hover:bg-blue-50 hover:text-blue-700 border border-slate-200 rounded-lg text-[11px] font-medium transition text-slate-600"
+                    onClick={() => setTanggal(dStr)}
+                    className={`py-2 px-1 rounded-xl text-center transition border ${
+                      aktif
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:bg-blue-50/40'
+                    }`}
                   >
-                    {p.label}
+                    <span className={`block text-[10px] font-medium ${aktif ? 'text-blue-100' : 'text-slate-400'}`}>
+                      {getHariShort(dStr)}
+                    </span>
+                    <span className="block text-sm font-extrabold mt-0.5">{dStr.slice(8, 10)}</span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
 
-            {/* Live Confirmation Bar */}
-            {infoMulai && infoSelesai && (
-              <div className="mt-2 p-2.5 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center gap-2">
-                <span className="text-base">📌</span>
-                <span>
-                  Konfirmasi Waktu Peminjaman: <strong>{infoMulai.time12} ({infoMulai.keterangan})</strong> sampai <strong>{infoSelesai.time12} ({infoSelesai.keterangan})</strong>
-                </span>
+            {/* Live Status Ketersediaan dari Kalender */}
+            {lokasiId && (
+              <div className={`p-3 rounded-xl border text-xs ${
+                loadingJadwal
+                  ? 'bg-white border-slate-200 text-slate-500'
+                  : jadwalHariIni.length === 0
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}>
+                {loadingJadwal ? (
+                  <span>⏳ Memeriksa jadwal terisi di kalender...</span>
+                ) : jadwalHariIni.length === 0 ? (
+                  <span className="font-semibold">🟢 Kosong seharian — belum ada jadwal terisi pada tanggal ini.</span>
+                ) : (
+                  <div className="space-y-1">
+                    <p className="font-bold">🔴 Jadwal Terisi pada Tanggal Ini (hindari jam berikut):</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {jadwalHariIni.map((ev, idx) => {
+                        const s = new Date(ev.start).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                        const e = new Date(ev.end).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                        return (
+                          <span key={idx} className="px-2 py-0.5 bg-white border border-amber-300 rounded-md font-semibold text-[11px]">
+                            {s}–{e} WIB ({ev.sumber === 'jadwal_kuliah' ? 'Kuliah' : 'Terpakai'})
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
+
+          {/* 3. Waktu Kegiatan: Wajib Sesi (Gedung) vs Bebas (Ruangan) */}
+          {tipePeminjaman === 'gedung' ? (
+            <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>⏰</span> Pilih Sesi Peminjaman Gedung <span className="text-rose-500">*</span>
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Batas Wajib: 08:00–15:00 (Sesi 1) • 15:00–20:00 (Sesi 2)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {Object.values(SESI_JADWAL).map((s) => {
+                  const selected = sesiAktif === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => handlePilihSesi(s.id)}
+                      className={`p-3.5 rounded-xl border text-left transition flex items-center gap-3 ${
+                        selected
+                          ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-purple-300'
+                      }`}
+                    >
+                      <span className="text-2xl">{s.ikon}</span>
+                      <div>
+                        <p className="text-xs font-bold">{s.nama}</p>
+                        <p className={`text-[11px] font-semibold mt-0.5 ${selected ? 'text-purple-100' : 'text-slate-500'}`}>
+                          {s.rentang}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>⏰</span> Waktu Peminjaman Ruangan (Bebas) <span className="text-rose-500">*</span>
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Atur jam mulai &amp; selesai sesuai kebutuhan
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Jam Mulai <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="time"
+                    value={jamMulai}
+                    onChange={(e) => setJamMulai(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Jam Selesai <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="time"
+                    value={jamSelesai}
+                    onChange={(e) => setJamSelesai(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Estimasi Peserta */}
           <div>

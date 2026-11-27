@@ -20,18 +20,31 @@ class LaporanFasilitas extends Model
         'pelapor_id',
         'ringkasan',
         'isi',
+        'foto_path',
+        'hasil_analisis_ai',
         'status',
         'catatan_penanganan',
         'dikonfirmasi_pada',
     ];
 
+    protected $appends = ['foto_url'];
+
     protected function casts(): array
     {
         return [
+            'hasil_analisis_ai' => 'array',
             'dikonfirmasi_pada' => 'datetime',
             'dibuat_pada'       => 'datetime',
             'diperbarui_pada'   => 'datetime',
         ];
+    }
+
+    public function getFotoUrlAttribute(): ?string
+    {
+        if (!$this->foto_path) {
+            return null;
+        }
+        return url('storage/' . ltrim($this->foto_path, '/'));
     }
 
     public function lokasi(): BelongsTo

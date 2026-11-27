@@ -107,6 +107,15 @@ class JadwalController extends Controller
                         'start'     => $startDt->toIso8601String(),
                         'end'       => $endDt->toIso8601String(),
                         'color'     => '#0d9488', // teal untuk jadwal kuliah
+                        'detail'    => [
+                            'mata_kuliah'   => $j->nama_mata_kuliah,
+                            'kode_mk'       => $j->kode_mk,
+                            'kelas'         => $j->kelas,
+                            'program_studi' => $j->program_studi,
+                            'nama_dosen'    => $j->nama_dosen,
+                            'hari'          => ucfirst($j->hari),
+                            'jam'           => "{$j->jam_mulai} - {$j->jam_selesai} WIB",
+                        ],
                     ];
                 }
 

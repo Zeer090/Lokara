@@ -528,29 +528,31 @@ export default function Beranda() {
         </div>
       </section>
 
-      {/* 🏛️ Lokasi Section (Daftar Fasilitas Utama) */}
+      {/* 🏛️ Lokasi Section (Daftar Gedung Utama) */}
       <section className="py-16 px-6 bg-slate-100/60 border-t border-slate-200/60">
         <div className="max-w-6xl mx-auto space-y-8">
           <div className="text-center max-w-2xl mx-auto">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Fasilitas Kampus POLINELA
+              Gedung Kampus POLINELA
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Gedung pertemuan besar, auditorium, serta laboratorium komputer siap menunjang kegiatan akademik dan kemahasiswaan.
+              Gedung pertemuan besar, aula, dan gedung serbaguna yang siap menunjang kegiatan akademik maupun kemahasiswaan.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {daftarLokasi.slice(0, 6).map((lok) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {daftarLokasi
+              .filter((lok) => lok.jenis === 'gedung')
+              .map((lok) => (
               <div
                 key={lok.id}
                 className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-2xl">{lok.jenis === 'gedung' ? '🏛️' : '🚪'}</span>
-                    <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full capitalize">
-                      {lok.jenis}
+                    <span className="text-2xl">🏛️</span>
+                    <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                      Gedung
                     </span>
                   </div>
                   <h3 className="text-lg font-bold text-slate-900 mb-1">{lok.nama}</h3>
@@ -566,23 +568,14 @@ export default function Beranda() {
                 <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-[11px] text-slate-400">Status Operasional Aktif</span>
                   <Link
-                    to={`/app/ajukan?lokasi_id=${lok.id}`}
+                    to={`/app/ajukan?jenis=gedung&lokasi_id=${lok.id}`}
                     className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline"
                   >
-                    Pilih Lokasi →
+                    Pinjam Gedung →
                   </Link>
                 </div>
               </div>
             ))}
-          </div>
-
-          <div className="text-center pt-2">
-            <Link
-              to="/lokasi"
-              className="inline-flex items-center gap-2 text-xs font-bold text-blue-600 hover:underline px-4 py-2 bg-white rounded-xl border border-slate-200 shadow-xs"
-            >
-              Lihat Seluruh {daftarLokasi.length} Fasilitas Kampus →
-            </Link>
           </div>
         </div>
       </section>

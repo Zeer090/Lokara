@@ -66,10 +66,11 @@ class LayananLlmService
         $temperature = $options['temperature'] ?? 0.3;
         $maxTokens   = $options['max_tokens'] ?? 450;
         $expectJson  = $options['json'] ?? false;
+        $inlineImage = $options['inline_image'] ?? null;
 
         try {
             return match ($provider) {
-                'gemini'     => $this->panggilGemini($systemPrompt, $messages, $temperature, $maxTokens, $expectJson),
+                'gemini'     => $this->panggilGemini($systemPrompt, $messages, $temperature, $maxTokens, $expectJson, $inlineImage),
                 'groq'       => $this->panggilOpenAiCompatible(
                     'https://api.groq.com/openai/v1/chat/completions',
                     config('services.llm.groq_api_key'),
@@ -118,17 +119,27 @@ class LayananLlmService
         return is_array($decoded) ? $decoded : null;
     }
 
-    protected function panggilGemini(string $systemPrompt, array $messages, float $temperature, int $maxTokens, bool $expectJson): ?string
+    protected function panggilGemini(string $systemPrompt, array $messages, float $temperature, int $maxTokens, bool $expectJson, ?array $inlineImage = null): ?string
     {
         $apiKey = config('services.llm.gemini_api_key');
         $primaryModel = config('services.llm.gemini_model', 'gemini-flash-latest');
 
         $contents = [];
-        foreach ($messages as $m) {
+        $lastIdx = count($messages) - 1;
+        foreach ($messages as $idx => $m) {
             $role = ($m['role'] ?? 'user') === 'assistant' ? 'model' : 'user';
+            $parts = [['text' => (string) ($m['content'] ?? '')]];
+            if ($idx === $lastIdx && $role === 'user' && is_array($inlineImage) && !empty($inlineImage['data'])) {
+                $parts[] = [
+                    'inlineData' => [
+                        'mimeType' => $inlineImage['mime_type'] ?? 'image/jpeg',
+                        'data'     => $inlineImage['data'],
+                    ],
+                ];
+            }
             $contents[] = [
                 'role'  => $role,
-                'parts' => [['text' => (string) ($m['content'] ?? '')]],
+                'parts' => $parts,
             ];
         }
 

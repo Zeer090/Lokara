@@ -36,6 +36,7 @@ import GedungTanpaPengelola from './pages/Sistem/GedungTanpaPengelola.jsx';
 import Pengaturan from './pages/Sistem/Pengaturan.jsx';
 import Log from './pages/Sistem/Log.jsx';
 import LaporanSistem from './pages/Sistem/Laporan.jsx';
+import LaporanFasilitasPage from './pages/Shared/LaporanFasilitasPage.jsx';
 
 // Akademik (BAAK) Pages
 import AkademikDashboard from './pages/Akademik/Dashboard.jsx';
@@ -80,6 +81,7 @@ const App = () => {
           <Route path="/pengelola/kasus" element={<KasusList />} />
           <Route path="/pengelola/kasus/:id" element={<DetailKasus />} />
           <Route path="/pengelola/laporan" element={<LaporanPengelola />} />
+          <Route path="/pengelola/laporan-fasilitas" element={<LaporanFasilitasPage mode="pengelola" />} />
         </Route>
 
         {/* ⚙️ Role: Pengelola Sistem (/sistem/...) */}
@@ -92,6 +94,7 @@ const App = () => {
           <Route path="/sistem/pengaturan" element={<Pengaturan />} />
           <Route path="/sistem/log" element={<Log />} />
           <Route path="/sistem/laporan" element={<LaporanSistem />} />
+          <Route path="/sistem/laporan-fasilitas" element={<LaporanFasilitasPage mode="sistem" />} />
         </Route>
 
         {/* 📚 Role: Bagian Akademik BAAK (/akademik/...) */}

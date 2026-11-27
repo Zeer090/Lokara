@@ -51,6 +51,7 @@ export default function Jadwal() {
       end: clickInfo.event.end?.toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' }),
       lokasi: clickInfo.event.extendedProps?.lokasi || 'Lokasi Kampus',
       sumber: clickInfo.event.extendedProps?.sumber,
+      detail: clickInfo.event.extendedProps?.detail || null,
     });
   };
 
@@ -160,12 +161,16 @@ export default function Jadwal() {
         {/* Modal Detail Event Klik */}
         {selectedEvent && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                  selectedEvent.sumber === 'acara_kampus' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-2">
+                <span className={`text-[10px] uppercase font-bold px-2.5 py-1 rounded-full ${
+                  selectedEvent.sumber === 'acara_kampus'
+                    ? 'bg-blue-100 text-blue-700'
+                    : selectedEvent.sumber === 'jadwal_kuliah'
+                      ? 'bg-teal-100 text-teal-800'
+                      : 'bg-emerald-100 text-emerald-700'
                 }`}>
-                  {selectedEvent.title}
+                  {selectedEvent.sumber === 'jadwal_kuliah' ? '📚 Jadwal Perkuliahan Resmi' : selectedEvent.title}
                 </span>
                 <button
                   onClick={() => setSelectedEvent(null)}
@@ -175,23 +180,68 @@ export default function Jadwal() {
                 </button>
               </div>
 
-              <div className="space-y-3 text-xs">
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Lokasi:</span>
-                  <p className="font-bold text-slate-800 text-sm">{selectedEvent.lokasi}</p>
+              {selectedEvent.sumber === 'jadwal_kuliah' && selectedEvent.detail ? (
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Mata Kuliah:</span>
+                    <p className="font-bold text-slate-900 text-sm">
+                      {selectedEvent.detail.mata_kuliah}
+                    </p>
+                    <p className="text-[11px] text-teal-700 font-semibold mt-0.5">
+                      Kode: {selectedEvent.detail.kode_mk} • Kelas {selectedEvent.detail.kelas}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Dosen Pengampu:</span>
+                      <p className="font-semibold text-slate-800">👤 {selectedEvent.detail.nama_dosen}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Program Studi:</span>
+                      <p className="font-semibold text-slate-800">🎓 {selectedEvent.detail.program_studi}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Lokasi Ruangan:</span>
+                      <p className="font-bold text-slate-800">🚪 {selectedEvent.lokasi}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Jam Kuliah:</span>
+                      <p className="font-semibold text-slate-800">⏱ {selectedEvent.detail.jam}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Tanggal Sesi:</span>
+                    <p className="font-medium text-slate-800">📅 {selectedEvent.start}</p>
+                  </div>
+
+                  <div className="p-3 bg-teal-50/70 rounded-xl text-[11px] text-teal-800 border border-teal-200/70 leading-relaxed">
+                    📚 <em>Info Akademik:</em> Slot ruangan ini terkunci rutin untuk perkuliahan dan tidak dapat dipinjam pada jam tersebut.
+                  </div>
                 </div>
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Mulai:</span>
-                  <p className="font-medium text-slate-800">{selectedEvent.start}</p>
+              ) : (
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Lokasi:</span>
+                    <p className="font-bold text-slate-800 text-sm">{selectedEvent.lokasi}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Mulai:</span>
+                    <p className="font-medium text-slate-800">{selectedEvent.start}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Selesai:</span>
+                    <p className="font-medium text-slate-800">{selectedEvent.end}</p>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl text-[11px] text-slate-500 border border-slate-200/60 leading-relaxed">
+                    🔒 <em>Keterangan Privasi:</em> Informasi nama pemesan dan keperluan acara dilindungi dan tidak ditampilkan pada jadwal publik.
+                  </div>
                 </div>
-                <div>
-                  <span className="text-slate-400 block mb-0.5">Selesai:</span>
-                  <p className="font-medium text-slate-800">{selectedEvent.end}</p>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-xl text-[11px] text-slate-500 border border-slate-200/60 leading-relaxed">
-                  🔒 <em>Keterangan Privasi:</em> Informasi nama pemesan dan keperluan acara dilindungi dan tidak ditampilkan pada jadwal publik.
-                </div>
-              </div>
+              )}
 
               <button
                 onClick={() => setSelectedEvent(null)}
